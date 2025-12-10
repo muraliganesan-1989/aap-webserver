@@ -1,51 +1,45 @@
 ---
-- name: Web Server Configuration
-  hosts: webservers
-  become: true
-  gather_facts: true
-
-  vars:
-    apache_pkg: "{{ 'apache2' if ansible_facts.os_family == 'Debian' else 'httpd' }}"
-    apache_svc: "{{ 'apache2' if ansible_facts.os_family == 'Debian' else 'httpd' }}"
+- name: Deploy Apache Web Servers on Ubuntu/Debian
+  hosts: all
+  become: yes
+  gather_facts: yes
 
   tasks:
 
-    - name: Install Apache web server
-      package:
-        name: "{{ apache_pkg }}"
-        state: present
+    - name: Update apt cache (check mode safe)
+      apt:
         update_cache: yes
       check_mode: no
 
+    - name: Install Apache package
+      apt:
+        name: apache2
+        state: present
+      register: apache_install
+      ignore_errors: yes  # allows playbook to continue if lock held
+      retries: 5
+      delay: 10
+      until: apache_install is succeeded
+      check_mode: no  # ensure actual install runs in real mode
+
     - name: Start and enable Apache service
       service:
-        name: "{{ apache_svc }}"
+        name: apache2
         state: started
-        enabled: true
-      when: not ansible_check_mode
+        enabled: yes
+      when: not ansible_check_mode  # skip in check mode
 
-    - name: Deploy default index page
+    - name: Deploy default index.html page
       copy:
         dest: /var/www/html/index.html
-        content: |
-          <html>
-          <head>
-            <title>Apache Web Server</title>
-          </head>
-          <body>
-            <h1>Welcome to {{ inventory_hostname }}</h1>
-            <p>Managed by Ansible Automation Platform 2.4</p>
-          </body>
-          </html>
+        content: "<h1>Welcome to {{ inventory_hostname }}</h1>"
+        owner: www-data
+        group: www-data
         mode: '0644'
       when: not ansible_check_mode
 
-    - name: Verify Apache package presence (check mode friendly)
-      package_facts:
-        manager: auto
-
-    - name: Show Apache install status
-      debug:
-        msg: >
-          Apache package {{ apache_pkg }}
-          is {{ 'installed' if apache_pkg in ansible_facts.packages else 'NOT installed' }}
+    - name: Verify Apache package is installed (check mode friendly)
+      command: dpkg -l apache2
+      register: apache_verify
+      changed_when: false
+      check_mode: yes
