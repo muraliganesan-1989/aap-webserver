@@ -1,42 +1,51 @@
 ---
-- name: Configure Web Servers
+- name: Web Server Configuration
   hosts: webservers
   become: true
+  gather_facts: true
+
+  vars:
+    apache_pkg: "{{ 'apache2' if ansible_facts.os_family == 'Debian' else 'httpd' }}"
+    apache_svc: "{{ 'apache2' if ansible_facts.os_family == 'Debian' else 'httpd' }}"
 
   tasks:
 
-    - name: Install Apache on Debian/Ubuntu
-      apt:
-        name: apache2
+    - name: Install Apache web server
+      package:
+        name: "{{ apache_pkg }}"
         state: present
         update_cache: yes
-      when: ansible_facts.os_family == "Debian"
+      check_mode: no
 
-    - name: Install Apache on RHEL/CentOS
-      yum:
-        name: httpd
-        state: present
-      when: ansible_facts.os_family == "RedHat"
-
-    - name: Start and enable Apache (Ubuntu/Debian)
+    - name: Start and enable Apache service
       service:
-        name: apache2
+        name: "{{ apache_svc }}"
         state: started
         enabled: true
-      when: ansible_facts.os_family == "Debian"
+      when: not ansible_check_mode
 
-    - name: Start and enable Apache (RHEL/CentOS)
-      service:
-        name: httpd
-        state: started
-        enabled: true
-      when: ansible_facts.os_family == "RedHat"
-
-    - name: Create default web page
+    - name: Deploy default index page
       copy:
         dest: /var/www/html/index.html
         content: |
-          <h1>Welcome</h1>
-          <p>Host: {{ inventory_hostname }}</p>
-          <p>Deployed via AAP 2.4</p>
+          <html>
+          <head>
+            <title>Apache Web Server</title>
+          </head>
+          <body>
+            <h1>Welcome to {{ inventory_hostname }}</h1>
+            <p>Managed by Ansible Automation Platform 2.4</p>
+          </body>
+          </html>
         mode: '0644'
+      when: not ansible_check_mode
+
+    - name: Verify Apache package presence (check mode friendly)
+      package_facts:
+        manager: auto
+
+    - name: Show Apache install status
+      debug:
+        msg: >
+          Apache package {{ apache_pkg }}
+          is {{ 'installed' if apache_pkg in ansible_facts.packages else 'NOT installed' }}
